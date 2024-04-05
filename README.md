@@ -55,6 +55,6 @@ _(Ảnh minh họa kết quả)_
 ## 3. Tài liệu và tham khảo
 
 - Cài node js tại: [Nodejs](https://nodejs.org/en).
-- Cách MQTT broker: [360 tour hội an halomedia](https://www.halomedia.vn/360tours/hoi-an-360-tour)
+- Tham khảo t: [360 tour hội an halomedia](https://www.halomedia.vn/360tours/hoi-an-360-tour)
 - React-three-fiber virtual tour: [React-three-fiber virtual tour](https://codesandbox.io/p/sandbox/sky-dome-with-annotations-wbrfs?file=%2Fsrc%2FApp.js).
 - Effect Transitions: [Hover Image Transition Effect - React Three Fiber Tutorial](https://www.youtube.com/watch?v=SOF7GBmC6gE)
