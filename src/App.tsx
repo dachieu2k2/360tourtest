@@ -244,6 +244,15 @@ function Demo() {
   const elRefs = useRef<THREE.ShaderMaterial[]>([]);
 
   const texture = useLoader(THREE.TextureLoader, data[indexTexture].texture);
+  // const texturePrevLoad = useLoader(THREE.TextureLoader, data.map((val)=>{...texture}));
+  useLoader(
+    THREE.TextureLoader,
+    data.map((val) => val.texture).reduce((prev, val) => [...prev, ...val], [])
+  );
+
+  // console.log(
+  //   data.map((val) => val.texture).reduce((prev, val) => [...prev, ...val], [])
+  // );
 
   useEffect(() => {
     texture.map((val, index) => prevTexture.current[index].copy(val));
@@ -253,7 +262,7 @@ function Demo() {
     });
   }, [indexTexture, api]);
 
-  console.log(prevTexture.current);
+  // console.log(prevTexture.current);
 
   useFrame((_state, delta) => {
     if (!elRefs.current) return;
@@ -266,17 +275,17 @@ function Demo() {
     <animated.group scale={springs.scale}>
       <Suspense
         fallback={
-          <mesh>
+          <mesh dispose={null}>
             <boxGeometry args={[10, 10, 10]} />
 
             {prevTexture.current.map((_value, index) => {
-              console.log(
-                "run here",
-                prevTexture.current[index].uuid,
-                texture[index].uuid,
-                prevState.current,
-                indexTexture
-              );
+              // console.log(
+              //   "run here",
+              //   prevTexture.current[index].uuid,
+              //   texture[index].uuid,
+              //   prevState.current,
+              //   indexTexture
+              // );
 
               return (
                 <meshBasicMaterial
@@ -290,7 +299,7 @@ function Demo() {
           </mesh>
         }
       >
-        <mesh>
+        <mesh dispose={null}>
           <boxGeometry args={[10, 10, 10]} />
           {/* {data[indexTexture].texture.map((_value, index) => (
             <meshBasicMaterial
@@ -301,6 +310,10 @@ function Demo() {
             />
           ))} */}
           {texture.map((value, index) => {
+            value.mapping = THREE.EquirectangularReflectionMapping;
+            value.minFilter = THREE.LinearFilter;
+            value.magFilter = THREE.LinearFilter;
+
             return (
               <shaderMaterial
                 ref={(el) => (el ? (elRefs.current[index] = el) : el)}
@@ -347,6 +360,8 @@ function App() {
   return (
     <>
       <Canvas
+        gl={{ antialias: true, toneMapping: THREE.NoToneMapping }}
+        linear
         // frameloop="demand"
         camera={{ position: [0, 0, 0.1] }}
       >
