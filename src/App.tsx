@@ -1,8 +1,10 @@
 import { animated, useSpring } from "@react-spring/three";
-import { Environment, Html, OrbitControls } from "@react-three/drei";
-import { Canvas } from "@react-three/fiber";
+import { Html, Loader, OrbitControls } from "@react-three/drei";
+import { Canvas, useFrame, useLoader } from "@react-three/fiber";
 import { Suspense, useEffect, useRef, useState } from "react";
+import { easing } from "maath";
 import * as THREE from "three";
+import { Bloom, EffectComposer } from "@react-three/postprocessing";
 
 interface DataButton {
   position: THREE.Vector3;
@@ -15,6 +17,8 @@ interface DataStore {
   texture: string[];
   buttons: DataButton[];
 }
+
+const NUMBER_RADIUS = 5;
 
 /**
 px = left
@@ -40,11 +44,11 @@ const data: DataStore[] = [
     buttons: [
       {
         linkTo: 1,
-        position: new THREE.Vector3(0, 0, -10),
+        position: new THREE.Vector3(0, 0, -NUMBER_RADIUS),
       },
       {
         linkTo: 2,
-        position: new THREE.Vector3(10, 0, 0),
+        position: new THREE.Vector3(NUMBER_RADIUS, 0, 0),
       },
     ],
   },
@@ -62,7 +66,7 @@ const data: DataStore[] = [
     buttons: [
       {
         linkTo: 0,
-        position: new THREE.Vector3(0, 0, -10),
+        position: new THREE.Vector3(0, 0, -NUMBER_RADIUS),
       },
     ],
   },
@@ -80,7 +84,7 @@ const data: DataStore[] = [
     buttons: [
       {
         linkTo: 3,
-        position: new THREE.Vector3(0, 0, -10),
+        position: new THREE.Vector3(0, 0, -NUMBER_RADIUS),
       },
     ],
   },
@@ -98,7 +102,7 @@ const data: DataStore[] = [
     buttons: [
       {
         linkTo: 4,
-        position: new THREE.Vector3(0, 0, -10),
+        position: new THREE.Vector3(0, 0, -NUMBER_RADIUS),
       },
     ],
   },
@@ -116,7 +120,7 @@ const data: DataStore[] = [
     buttons: [
       {
         linkTo: 5,
-        position: new THREE.Vector3(0, 0, -10),
+        position: new THREE.Vector3(0, 0, -NUMBER_RADIUS),
       },
     ],
   },
@@ -134,7 +138,7 @@ const data: DataStore[] = [
     buttons: [
       {
         linkTo: 6,
-        position: new THREE.Vector3(0, 0, -10),
+        position: new THREE.Vector3(0, 0, -NUMBER_RADIUS),
       },
     ],
   },
@@ -152,7 +156,7 @@ const data: DataStore[] = [
     buttons: [
       {
         linkTo: 7,
-        position: new THREE.Vector3(0, 0, -10),
+        position: new THREE.Vector3(0, 0, -NUMBER_RADIUS),
       },
     ],
   },
@@ -170,46 +174,152 @@ const data: DataStore[] = [
     buttons: [
       {
         linkTo: 1,
-        position: new THREE.Vector3(0, 0, -10),
+        position: new THREE.Vector3(0, 0, -NUMBER_RADIUS),
       },
     ],
   },
 ];
 
+const vertextShader = `
+    varying vec2 vUv;
+
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+    }
+`;
+
+const fragmentShader = `
+    varying vec2 vUv;
+    uniform sampler2D tex;
+    uniform sampler2D tex2;
+    uniform float _rot;
+    uniform float dispFactor;
+    uniform float effectFactor;
+
+    float rand(vec2 n) { 
+      return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
+    }
+    
+    float noise(vec2 p){
+      vec2 ip = floor(p);
+      vec2 u = fract(p);
+      u = u*u*(3.0-2.0*u);
+      
+      float res = mix(
+        mix(rand(ip),rand(ip+vec2(1.0,0.0)),u.x),
+        mix(rand(ip+vec2(0.0,1.0)),rand(ip+vec2(1.0,1.0)),u.x),u.y);
+      return res*res;
+    }
+
+    void main() {
+      vec2 uv = vUv;
+
+      float noiseFactor = noise(gl_FragCoord.xy * 0.4);
+
+      vec2 distortedPosition = vec2(uv.x + dispFactor * noiseFactor, uv.y);
+      vec2 distortedPosition2 = vec2(uv.x - (1.0 - dispFactor) * noiseFactor, uv.y);
+      vec4 _texture = texture2D(tex, distortedPosition);
+      vec4 _texture2 = texture2D(tex2, distortedPosition2);
+      vec4 finalTexture = mix(_texture, _texture2, dispFactor);
+      gl_FragColor = finalTexture;
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+
+    }
+`;
+
 function Demo() {
   const [indexTexture, setIndexTexture] = useState<number>(0);
   const prevState = useRef<number>(0);
+  const prevTexture = useRef<THREE.Texture[]>([
+    new THREE.Texture(),
+    new THREE.Texture(),
+    new THREE.Texture(),
+    new THREE.Texture(),
+    new THREE.Texture(),
+    new THREE.Texture(),
+  ]);
   const [springs, api] = useSpring(() => ({ scale: 1 }));
+  const elRefs = useRef<THREE.ShaderMaterial[]>([]);
+
+  const texture = useLoader(THREE.TextureLoader, data[indexTexture].texture);
 
   useEffect(() => {
+    texture.map((val, index) => prevTexture.current[index].copy(val));
     prevState.current = indexTexture;
     api.start({
       scale: 1.5,
     });
   }, [indexTexture, api]);
 
+  console.log(prevTexture.current);
+
+  useFrame((_state, delta) => {
+    if (!elRefs.current) return;
+    elRefs.current.map((val) => {
+      easing.damp(val.uniforms.dispFactor, "value", 1, 0.5, delta);
+    });
+  });
+
   return (
     <animated.group scale={springs.scale}>
       <Suspense
         fallback={
-          <Environment
-            path="/"
-            files={data[prevState.current].texture}
-            background
-            near={1}
-            far={1000}
-            resolution={256}
-          />
+          <mesh>
+            <boxGeometry args={[10, 10, 10]} />
+
+            {prevTexture.current.map((_value, index) => {
+              console.log(
+                "run here",
+                prevTexture.current[index].uuid,
+                texture[index].uuid,
+                prevState.current,
+                indexTexture
+              );
+
+              return (
+                <meshBasicMaterial
+                  key={index}
+                  attach={`material-${index}`}
+                  map={prevTexture.current[index]}
+                  side={THREE.DoubleSide}
+                />
+              );
+            })}
+          </mesh>
         }
       >
-        <Environment
-          path="/"
-          files={data[indexTexture].texture}
-          background
-          near={1}
-          far={1000}
-          resolution={256}
-        />
+        <mesh>
+          <boxGeometry args={[10, 10, 10]} />
+          {/* {data[indexTexture].texture.map((_value, index) => (
+            <meshBasicMaterial
+              key={texture[index].uuid}
+              attach={`material-${index}`}
+              map={texture[index]}
+              side={THREE.DoubleSide}
+            />
+          ))} */}
+          {texture.map((value, index) => {
+            return (
+              <shaderMaterial
+                ref={(el) => (el ? (elRefs.current[index] = el) : el)}
+                key={value.uuid}
+                attach={`material-${index}`}
+                // map={value}
+                side={THREE.DoubleSide}
+                vertexShader={vertextShader}
+                fragmentShader={fragmentShader}
+                uniforms={{
+                  effectFactor: { value: 1.2 },
+                  dispFactor: { value: 0 },
+                  tex: { value: value },
+                  tex2: { value: value },
+                }}
+              />
+            );
+          })}
+        </mesh>
         {data[indexTexture].buttons.map((value, index) => (
           <mesh
             key={
@@ -219,7 +329,7 @@ function Demo() {
             }
             position={value.position}
           >
-            <sphereGeometry args={[1.5, 32, 32]} />
+            <sphereGeometry args={[0.5, 32, 32]} />
             <meshBasicMaterial color="white" />
             <Html center>
               <div onClick={() => setIndexTexture(value.linkTo)}>
@@ -236,20 +346,39 @@ function Demo() {
 function App() {
   return (
     <>
-      <Canvas frameloop="demand" camera={{ position: [0, 0, 0.1] }}>
+      <Canvas
+        // frameloop="demand"
+        camera={{ position: [0, 0, 0.1] }}
+      >
         <OrbitControls
-          enableZoom={false}
-          enablePan={false}
-          enableDamping
-          dampingFactor={0.2}
+          // enableZoom={false}
+          // enablePan={false}
+          // enableDamping
+          // dampingFactor={0.2}
           autoRotate={false}
           rotateSpeed={-0.5}
         />
         {/* <axesHelper args={[5]} /> */}
 
         {/* <Preload all /> */}
+        <EffectComposer>
+          {/* <DepthOfField
+            focusDistance={0}
+            focalLength={0.02}
+            bokehScale={2}
+            height={480}
+          /> */}
+          <Bloom
+            luminanceThreshold={0.3}
+            luminanceSmoothing={0.9}
+            height={500}
+          />
+          {/* <Noise opacity={0.02} /> */}
+          {/* <Vignette eskil={false} offset={0.1} darkness={1.1} /> */}
+        </EffectComposer>
         <Demo />
       </Canvas>
+      <Loader />
     </>
   );
 }
